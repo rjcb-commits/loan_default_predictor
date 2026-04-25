@@ -1,0 +1,12 @@
+data/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.ipynb_checkpoints/
+.streamlit/secrets.toml
+*.egg-info/
+.pytest_cache/
+.coverage
