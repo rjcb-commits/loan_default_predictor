@@ -1,0 +1,186 @@
+{
+  "features": [
+    "loan_amnt",
+    "term",
+    "int_rate",
+    "installment",
+    "grade",
+    "emp_length",
+    "home_ownership",
+    "annual_inc",
+    "verification_status",
+    "purpose",
+    "addr_state",
+    "dti",
+    "delinq_2yrs",
+    "fico_range_low",
+    "inq_last_6mths",
+    "open_acc",
+    "pub_rec",
+    "revol_bal",
+    "revol_util",
+    "total_acc"
+  ],
+  "categorical": [
+    "term",
+    "grade",
+    "home_ownership",
+    "verification_status",
+    "purpose",
+    "addr_state"
+  ],
+  "categories": {
+    "term": [
+      "36",
+      "60"
+    ],
+    "grade": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G"
+    ],
+    "home_ownership": [
+      "ANY",
+      "MORTGAGE",
+      "NONE",
+      "OTHER",
+      "OWN",
+      "RENT"
+    ],
+    "verification_status": [
+      "Not Verified",
+      "Source Verified",
+      "Verified"
+    ],
+    "purpose": [
+      "car",
+      "credit_card",
+      "debt_consolidation",
+      "educational",
+      "home_improvement",
+      "house",
+      "major_purchase",
+      "medical",
+      "moving",
+      "other",
+      "renewable_energy",
+      "small_business",
+      "vacation",
+      "wedding"
+    ],
+    "addr_state": [
+      "AK",
+      "AL",
+      "AR",
+      "AZ",
+      "CA",
+      "CO",
+      "CT",
+      "DC",
+      "DE",
+      "FL",
+      "GA",
+      "HI",
+      "ID",
+      "IL",
+      "IN",
+      "KS",
+      "KY",
+      "LA",
+      "MA",
+      "MD",
+      "ME",
+      "MI",
+      "MN",
+      "MO",
+      "MS",
+      "MT",
+      "NC",
+      "ND",
+      "NE",
+      "NH",
+      "NJ",
+      "NM",
+      "NV",
+      "NY",
+      "OH",
+      "OK",
+      "OR",
+      "PA",
+      "RI",
+      "SC",
+      "SD",
+      "TN",
+      "TX",
+      "UT",
+      "VA",
+      "VT",
+      "WA",
+      "WI",
+      "WV",
+      "WY"
+    ]
+  },
+  "ranges": {
+    "loan_amnt": {
+      "min": 725.0,
+      "max": 40000.0
+    },
+    "int_rate": {
+      "min": 5.31,
+      "max": 30.99
+    },
+    "installment": {
+      "min": 22.51,
+      "max": 1569.11
+    },
+    "emp_length": {
+      "min": 0.0,
+      "max": 10.0
+    },
+    "annual_inc": {
+      "min": 0.0,
+      "max": 6500000.0
+    },
+    "dti": {
+      "min": 0.0,
+      "max": 999.0
+    },
+    "delinq_2yrs": {
+      "min": 0.0,
+      "max": 21.0
+    },
+    "fico_range_low": {
+      "min": 660.0,
+      "max": 845.0
+    },
+    "inq_last_6mths": {
+      "min": 0.0,
+      "max": 8.0
+    },
+    "open_acc": {
+      "min": 0.0,
+      "max": 81.0
+    },
+    "pub_rec": {
+      "min": 0.0,
+      "max": 61.0
+    },
+    "revol_bal": {
+      "min": 0.0,
+      "max": 2560703.0
+    },
+    "revol_util": {
+      "min": 0.0,
+      "max": 154.3
+    },
+    "total_acc": {
+      "min": 2.0,
+      "max": 130.0
+    }
+  }
+}

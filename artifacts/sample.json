@@ -1,0 +1,22 @@
+{
+  "loan_amnt": "10000.0",
+  "term": "36",
+  "int_rate": "9.44",
+  "installment": "320.05",
+  "grade": "B",
+  "emp_length": "2.0",
+  "home_ownership": "OWN",
+  "annual_inc": "50000.0",
+  "verification_status": "Not Verified",
+  "purpose": "home_improvement",
+  "addr_state": "NY",
+  "dti": "2.88",
+  "delinq_2yrs": "0.0",
+  "fico_range_low": "720.0",
+  "inq_last_6mths": "0.0",
+  "open_acc": "7.0",
+  "pub_rec": "1.0",
+  "revol_bal": "5427.0",
+  "revol_util": "25.2",
+  "total_acc": "17.0"
+}
