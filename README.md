@@ -2,7 +2,7 @@
 
 A LightGBM model that estimates default probability for Lending Club personal loans, served as an interactive Streamlit app.
 
-**Live demo:** _coming soon_
+**Live demo:** https://loandefaultpredictor-rayjackcb.streamlit.app
 
 ## What it does
 
