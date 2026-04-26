@@ -139,29 +139,30 @@ def safe_preset(values, meta):
     return safe
 
 
-def initialize_state(meta):
-    """First-run setup: populate session_state from the Typical preset."""
-    if st.session_state.get("initialized"):
-        return
-    typical = safe_preset(PRESETS["typical"], meta)
-    for col, v in typical.items():
-        st.session_state[f"input_{col}"] = v
-    st.session_state.initialized = True
+PRESET_LABEL_TO_KEY = {
+    "Low risk": "low_risk",
+    "Typical": "typical",
+    "High risk": "high_risk",
+}
 
 
 def sidebar_inputs(meta):
     st.sidebar.header("Borrower features")
 
-    st.sidebar.markdown("**Try a preset:**")
-    preset_cols = st.sidebar.columns(3)
-    presets_in_order = [
-        ("Low risk", "low_risk"),
-        ("Typical", "typical"),
-        ("High risk", "high_risk"),
-    ]
-    for i, (label, key) in enumerate(presets_in_order):
-        if preset_cols[i].button(label, use_container_width=True, key=f"btn_{key}"):
-            safe = safe_preset(PRESETS[key], meta)
+    preset_label = st.sidebar.pills(
+        "Try a preset",
+        options=list(PRESET_LABEL_TO_KEY.keys()),
+        selection_mode="single",
+        default="Typical",
+        key="preset_select",
+    )
+
+    # Apply preset whenever the selection changes (including the initial render).
+    prev = st.session_state.get("_prev_preset")
+    if preset_label != prev:
+        st.session_state._prev_preset = preset_label
+        if preset_label is not None:
+            safe = safe_preset(PRESETS[PRESET_LABEL_TO_KEY[preset_label]], meta)
             for col, v in safe.items():
                 st.session_state[f"input_{col}"] = v
 
@@ -316,8 +317,6 @@ def main():
     model = load_model()
     meta = load_json("feature_meta.json")
     metrics = load_json("metrics.json")
-
-    initialize_state(meta)
 
     st.title("Loan Default Predictor")
     st.write(
