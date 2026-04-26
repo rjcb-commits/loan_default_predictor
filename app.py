@@ -31,20 +31,27 @@ def load_json(name: str):
 
 
 def format_value(v):
-    if isinstance(v, float):
-        if np.isnan(v):
-            return "n/a"
+    if pd.isna(v) if isinstance(v, float) else False:
+        return "n/a"
+    if isinstance(v, (int, float, np.floating, np.integer)):
+        v = float(v)
         if abs(v) >= 1000:
             return f"{v:,.0f}"
         return f"{v:.2f}"
     return str(v)
 
 
+def format_money(v):
+    if v < 0:
+        return f"-${abs(v):,.0f}"
+    return f"${v:,.0f}"
+
+
 def sidebar_inputs(meta, sample):
     st.sidebar.header("Borrower features")
     inputs = {}
     for col in meta["features"]:
-        label = col.replace("_", " ")
+        label = col.replace("_", " ").title()
         if col in meta["categorical"]:
             options = meta["categories"][col]
             sample_val = sample.get(col)
@@ -72,6 +79,134 @@ def sidebar_inputs(meta, sample):
     return inputs
 
 
+def render_probability_indicator(prob, baseline_prob):
+    """Big probability number plus a zone-coloured horizontal bar."""
+    if prob < 0.10:
+        color = "#2ca02c"
+    elif prob < 0.25:
+        color = "#e89914"
+    else:
+        color = "#d62728"
+
+    pct = min(max(prob * 100, 0), 100)
+    baseline_pct = min(max(baseline_prob * 100, 0), 100)
+
+    html = f"""
+    <div style="text-align: center; padding: 8px 0 4px;">
+      <div style="font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600;">
+        Probability of default
+      </div>
+      <div style="font-size: 64px; font-weight: 600; color: {color}; line-height: 1.1; margin-top: 4px;">
+        {prob:.1%}
+      </div>
+    </div>
+    <div style="position: relative; height: 14px; margin: 18px 4px 8px;
+                background: linear-gradient(to right,
+                  #2ca02c 0%, #2ca02c 10%,
+                  #e89914 10%, #e89914 25%,
+                  #d62728 25%, #d62728 100%);
+                border-radius: 7px; opacity: 0.55;">
+      <div style="position: absolute; left: {pct:.2f}%; top: -6px;
+                  width: 4px; height: 26px; background: #0a2540;
+                  border-radius: 2px; transform: translateX(-2px);
+                  box-shadow: 0 1px 4px rgba(0,0,0,0.3);"></div>
+      <div style="position: absolute; left: {baseline_pct:.2f}%; top: 16px;
+                  font-size: 11px; color: #888; transform: translateX(-50%); white-space: nowrap;">
+        ▲ baseline {baseline_prob:.0%}
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin: 4px 4px 0;">
+      <span>0%</span><span>10%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def calc_economics(loan_amnt, installment, term, prob_default):
+    """Simple expected-value calculation. Industry-standard rough numbers."""
+    expected_interest_if_paid = max(installment * term - loan_amnt, 0.0)
+    expected_loss_if_default = 0.5 * loan_amnt  # ~50% LGD is a rough industry default
+
+    expected_value = (
+        (1 - prob_default) * expected_interest_if_paid
+        - prob_default * expected_loss_if_default
+    )
+    return {
+        "principal": loan_amnt,
+        "expected_interest_if_paid": expected_interest_if_paid,
+        "expected_loss_if_default": expected_loss_if_default,
+        "expected_value": expected_value,
+        "is_profitable": expected_value > 0,
+    }
+
+
+def find_top_improvements(model, X, meta, base_prob, top_n=3):
+    """Brute-force search across each feature for the value that minimizes default prob.
+
+    Holds all other features constant, varies one at a time. Numerics use a
+    20-point grid across the feature's range; categoricals try every category.
+    Returns the top N reductions ranked by absolute drop in default probability.
+    """
+    rows = []
+    feature_for_row = []
+    suggested_for_row = []
+
+    current_row = X.iloc[0]
+
+    for col in meta["features"]:
+        if col in meta["categorical"]:
+            options = meta["categories"][col]
+            current = current_row[col]
+            for opt in options:
+                if opt == current:
+                    continue
+                row = current_row.copy()
+                row[col] = opt
+                rows.append(row)
+                feature_for_row.append(col)
+                suggested_for_row.append(opt)
+        else:
+            r = meta["ranges"][col]
+            grid = np.linspace(r["min"], r["max"], 20)
+            for v in grid:
+                row = current_row.copy()
+                row[col] = v
+                rows.append(row)
+                feature_for_row.append(col)
+                suggested_for_row.append(v)
+
+    if not rows:
+        return []
+
+    X_alt = pd.DataFrame(rows).reset_index(drop=True)
+    for cat_col in meta["categorical"]:
+        X_alt[cat_col] = pd.Categorical(
+            X_alt[cat_col], categories=meta["categories"][cat_col]
+        )
+
+    probs = model.predict_proba(X_alt)[:, 1]
+
+    best_per_feature = {}
+    for i, col in enumerate(feature_for_row):
+        if col not in best_per_feature or probs[i] < best_per_feature[col]["new_prob"]:
+            best_per_feature[col] = {
+                "feature": col,
+                "suggested": suggested_for_row[i],
+                "current": current_row[col],
+                "new_prob": float(probs[i]),
+            }
+
+    improvements = []
+    for col, info in best_per_feature.items():
+        delta = base_prob - info["new_prob"]
+        if delta > 0.005:
+            info["delta"] = delta
+            improvements.append(info)
+
+    improvements.sort(key=lambda x: x["delta"], reverse=True)
+    return improvements[:top_n]
+
+
 def main():
     if not (ARTIFACTS / "model.pkl").exists():
         st.error(
@@ -87,10 +222,10 @@ def main():
 
     st.title("Loan Default Predictor")
     st.write(
-        "LightGBM model trained on the Lending Club dataset. Move the sliders in "
-        "the sidebar and the prediction updates live, alongside a per-feature "
-        "contribution chart that shows exactly which inputs pushed this borrower "
-        "above or below baseline default risk."
+        "LightGBM model trained on the Lending Club dataset. Move the sliders. "
+        "The default probability, the per-feature contribution chart, the loan's "
+        "expected-value math, and the top single-feature changes that would lower "
+        "risk all update live."
     )
 
     inputs = sidebar_inputs(meta, sample)
@@ -101,38 +236,62 @@ def main():
 
     prob = float(model.predict_proba(X)[0, 1])
 
-    # Per-feature contributions (mathematically equivalent to SHAP for tree models).
-    # Last column is the bias (model's expected log-odds output).
     contribs = model.predict(X, pred_contrib=True)
     feature_contribs = contribs[0, :-1]
     bias = float(contribs[0, -1])
     baseline_prob = 1.0 / (1.0 + np.exp(-bias))
 
-    left, right = st.columns([1, 2])
+    # ===== Decision header =====
+    render_probability_indicator(prob, baseline_prob)
+
+    if prob < 0.10:
+        st.success("**APPROVE** — low risk, well below approval threshold")
+    elif prob < 0.25:
+        st.info("**MANUAL REVIEW** — moderate risk, judgment call")
+    else:
+        st.warning("**DECLINE** — elevated risk above the typical approval threshold")
+
+    st.write("")
+
+    # ===== Loan economics + Per-feature contributions =====
+    left, right = st.columns([1, 1])
 
     with left:
-        st.subheader("Prediction")
-        st.metric("Probability of default", f"{prob:.1%}")
-        if prob < 0.10:
-            st.success("Low risk")
-        elif prob < 0.25:
-            st.info("Moderate risk")
-        else:
-            st.warning("Elevated risk")
-        delta = prob - baseline_prob
-        direction = "above" if delta >= 0 else "below"
+        st.subheader("Loan economics")
+
+        loan_amnt = float(X.iloc[0]["loan_amnt"])
+        installment = float(X.iloc[0]["installment"])
+        term = float(X.iloc[0]["term"])
+        econ = calc_economics(loan_amnt, installment, term, prob)
+
+        c1, c2 = st.columns(2)
+        c1.metric("Principal", format_money(econ["principal"]))
+        c2.metric(
+            "Interest if repaid",
+            format_money(econ["expected_interest_if_paid"]),
+        )
+
+        c3, c4 = st.columns(2)
+        c3.metric(
+            "Loss if default (50% LGD)",
+            format_money(econ["expected_loss_if_default"]),
+        )
+        c4.metric(
+            "Net expected value",
+            format_money(econ["expected_value"]),
+            delta="profitable" if econ["is_profitable"] else "loss",
+            delta_color="normal" if econ["is_profitable"] else "inverse",
+        )
+
         st.caption(
-            f"Model baseline default rate: **{baseline_prob:.1%}**. "
-            f"This borrower is **{abs(delta):.1%} {direction}** baseline."
+            f"EV = (1 − {prob:.1%}) × interest − {prob:.1%} × loss. "
+            "50% loss-given-default is a rough industry approximation; "
+            "tune it to your portfolio's actual recovery rate."
         )
 
     with right:
         st.subheader("Why this prediction")
-        st.caption(
-            "Each bar shows how much a feature value pushed the prediction up "
-            "(red, toward default) or down (green, toward repayment), in "
-            "log-odds. Updates as you move the sliders."
-        )
+
         contrib_df = pd.DataFrame(
             {
                 "feature": model.feature_name_,
@@ -142,8 +301,10 @@ def main():
         )
         contrib_df["abs"] = contrib_df["contribution"].abs()
         top = contrib_df.nlargest(10, "abs").sort_values("contribution")
+
         labels = [f"{row['feature']} = {row['value']}" for _, row in top.iterrows()]
         colors = ["#d62728" if c > 0 else "#2ca02c" for c in top["contribution"]]
+
         fig, ax = plt.subplots(figsize=(8, 5))
         ax.barh(labels, top["contribution"], color=colors)
         ax.axvline(0, color="black", linewidth=0.6)
@@ -152,6 +313,46 @@ def main():
         st.pyplot(fig)
         plt.close(fig)
 
+        st.caption(
+            "Each bar is the log-odds contribution from that specific feature "
+            "value. Red pushes toward default, green toward repayment. "
+            "Sum + baseline = model output."
+        )
+
+    # ===== Counterfactuals =====
+    st.subheader("What single change would help most?")
+    st.caption(
+        "Brute-force search: for each feature, what value (holding the rest "
+        "constant) gives the lowest default probability?"
+    )
+
+    improvements = find_top_improvements(model, X, meta, prob, top_n=3)
+
+    if improvements:
+        cols = st.columns(3)
+        for i, imp in enumerate(improvements):
+            with cols[i]:
+                st.markdown(
+                    f"**{imp['feature'].replace('_', ' ').title()}**"
+                )
+                st.markdown(
+                    f"`{format_value(imp['current'])}` → "
+                    f"`{format_value(imp['suggested'])}`"
+                )
+                st.metric(
+                    "New default probability",
+                    f"{imp['new_prob']:.1%}",
+                    delta=f"-{imp['delta']:.1%}",
+                    delta_color="inverse",
+                )
+    else:
+        st.info(
+            "No single-feature change drops risk meaningfully for this borrower. "
+            "Either they're already low-risk or the model views them as "
+            "structurally elevated across all individual features."
+        )
+
+    # ===== Diagnostics =====
     with st.expander("Model details and diagnostics"):
         c1, c2 = st.columns(2)
         with c1:
