@@ -300,9 +300,10 @@ def contribution_chart(model, X, feature_contribs, top_n=10):
     contrib_df["abs"] = contrib_df["contribution"].abs()
     top = contrib_df.nlargest(top_n, "abs").sort_values("contribution")
 
+    # Plain-text labels (Plotly's left-margin sizing is more reliable with plain text
+    # than with multi-line HTML, which can clip in narrow containers).
     labels = [
-        f"<b>{row['feature'].replace('_', ' ')}</b><br>"
-        f"<span style='color:{SUBTLE};font-size:11px;'>{row['value']}</span>"
+        f"{row['feature'].replace('_', ' ')} = {row['value']}"
         for _, row in top.iterrows()
     ]
     colors = [RED if c > 0 else GREEN for c in top["contribution"]]
@@ -328,8 +329,8 @@ def contribution_chart(model, X, feature_contribs, top_n=10):
     )
     fig.add_vline(x=0, line_color=SUBTLE, line_width=1)
     fig.update_layout(
-        height=420,
-        margin={"t": 8, "b": 50, "l": 4, "r": 16},
+        height=440,
+        margin={"t": 8, "b": 50, "l": 16, "r": 16},
         xaxis={
             "title": "Contribution to log-odds of default",
             "title_font": {"size": 12, "color": MUTED},
@@ -337,7 +338,10 @@ def contribution_chart(model, X, feature_contribs, top_n=10):
             "gridcolor": "#f0eee8",
             "zerolinecolor": SUBTLE,
         },
-        yaxis={"tickfont": {"size": 12, "color": ACCENT}},
+        yaxis={
+            "tickfont": {"size": 12, "color": ACCENT},
+            "automargin": True,
+        },
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
