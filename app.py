@@ -96,6 +96,10 @@ h2, h3 { margin-top: 1.6rem !important; }
 [data-testid="stMetricDelta"] { font-size: 13px !important; }
 
 /* Sidebar */
+[data-testid="stSidebar"] {
+  background-color: #efece4 !important;
+  border-right: 1px solid #e0ddd4;
+}
 [data-testid="stSidebar"] .block-container { padding-top: 1.5rem; }
 </style>
 """
