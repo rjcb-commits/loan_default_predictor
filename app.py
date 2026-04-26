@@ -19,6 +19,79 @@ st.set_page_config(
 )
 
 
+# Hand-tuned borrower profiles. All values are clamped to valid options/ranges
+# at runtime via safe_preset(), so if the trained model's category lists or
+# ranges differ slightly from these guesses the app still works.
+PRESETS = {
+    "low_risk": {
+        "loan_amnt": 7000.0,
+        "term": "36",
+        "int_rate": 7.5,
+        "installment": 220.0,
+        "grade": "A",
+        "emp_length": 10.0,
+        "home_ownership": "MORTGAGE",
+        "annual_inc": 95000.0,
+        "verification_status": "Source Verified",
+        "purpose": "credit_card",
+        "addr_state": "CA",
+        "dti": 9.0,
+        "delinq_2yrs": 0.0,
+        "fico_range_low": 770.0,
+        "inq_last_6mths": 0.0,
+        "open_acc": 14.0,
+        "pub_rec": 0.0,
+        "revol_bal": 5000.0,
+        "revol_util": 15.0,
+        "total_acc": 30.0,
+    },
+    "typical": {
+        "loan_amnt": 12000.0,
+        "term": "36",
+        "int_rate": 13.0,
+        "installment": 400.0,
+        "grade": "C",
+        "emp_length": 5.0,
+        "home_ownership": "MORTGAGE",
+        "annual_inc": 65000.0,
+        "verification_status": "Source Verified",
+        "purpose": "debt_consolidation",
+        "addr_state": "CA",
+        "dti": 18.0,
+        "delinq_2yrs": 0.0,
+        "fico_range_low": 690.0,
+        "inq_last_6mths": 0.0,
+        "open_acc": 11.0,
+        "pub_rec": 0.0,
+        "revol_bal": 12000.0,
+        "revol_util": 50.0,
+        "total_acc": 24.0,
+    },
+    "high_risk": {
+        "loan_amnt": 28000.0,
+        "term": "60",
+        "int_rate": 22.0,
+        "installment": 770.0,
+        "grade": "E",
+        "emp_length": 1.0,
+        "home_ownership": "RENT",
+        "annual_inc": 38000.0,
+        "verification_status": "Not Verified",
+        "purpose": "debt_consolidation",
+        "addr_state": "FL",
+        "dti": 32.0,
+        "delinq_2yrs": 2.0,
+        "fico_range_low": 645.0,
+        "inq_last_6mths": 3.0,
+        "open_acc": 8.0,
+        "pub_rec": 1.0,
+        "revol_bal": 18000.0,
+        "revol_util": 88.0,
+        "total_acc": 14.0,
+    },
+}
+
+
 @st.cache_resource
 def load_model():
     return joblib.load(ARTIFACTS / "model.pkl")
@@ -31,7 +104,7 @@ def load_json(name: str):
 
 
 def format_value(v):
-    if pd.isna(v) if isinstance(v, float) else False:
+    if isinstance(v, float) and pd.isna(v):
         return "n/a"
     if isinstance(v, (int, float, np.floating, np.integer)):
         v = float(v)
@@ -47,40 +120,74 @@ def format_money(v):
     return f"${v:,.0f}"
 
 
-def sidebar_inputs(meta, sample):
-    st.sidebar.header("Borrower features")
-    inputs = {}
+def safe_preset(values, meta):
+    """Clamp a preset dict to the valid options/ranges from feature_meta.json."""
+    safe = {}
     for col in meta["features"]:
-        label = col.replace("_", " ").title()
+        v = values.get(col)
         if col in meta["categorical"]:
             options = meta["categories"][col]
-            sample_val = sample.get(col)
-            default_idx = options.index(sample_val) if sample_val in options else 0
-            inputs[col] = st.sidebar.selectbox(label, options, index=default_idx)
+            safe[col] = v if v in options else options[0]
         else:
             r = meta["ranges"][col]
             try:
-                default = (
-                    float(sample.get(col))
-                    if sample.get(col) is not None
-                    else (r["min"] + r["max"]) / 2
-                )
+                num = float(v) if v is not None else (r["min"] + r["max"]) / 2
+                num = max(r["min"], min(num, r["max"]))
+                safe[col] = num
             except (TypeError, ValueError):
-                default = (r["min"] + r["max"]) / 2
-            default = max(r["min"], min(default, r["max"]))
+                safe[col] = (r["min"] + r["max"]) / 2
+    return safe
+
+
+def initialize_state(meta):
+    """First-run setup: populate session_state from the Typical preset."""
+    if st.session_state.get("initialized"):
+        return
+    typical = safe_preset(PRESETS["typical"], meta)
+    for col, v in typical.items():
+        st.session_state[f"input_{col}"] = v
+    st.session_state.initialized = True
+
+
+def sidebar_inputs(meta):
+    st.sidebar.header("Borrower features")
+
+    st.sidebar.markdown("**Try a preset:**")
+    preset_cols = st.sidebar.columns(3)
+    presets_in_order = [
+        ("Low risk", "low_risk"),
+        ("Typical", "typical"),
+        ("High risk", "high_risk"),
+    ]
+    for i, (label, key) in enumerate(presets_in_order):
+        if preset_cols[i].button(label, use_container_width=True, key=f"btn_{key}"):
+            safe = safe_preset(PRESETS[key], meta)
+            for col, v in safe.items():
+                st.session_state[f"input_{col}"] = v
+
+    st.sidebar.divider()
+
+    inputs = {}
+    for col in meta["features"]:
+        label = col.replace("_", " ").title()
+        wkey = f"input_{col}"
+        if col in meta["categorical"]:
+            options = meta["categories"][col]
+            inputs[col] = st.sidebar.selectbox(label, options, key=wkey)
+        else:
+            r = meta["ranges"][col]
             step = (r["max"] - r["min"]) / 100 if r["max"] > r["min"] else 1.0
             inputs[col] = st.sidebar.slider(
                 label,
                 min_value=float(r["min"]),
                 max_value=float(r["max"]),
-                value=float(default),
                 step=float(step),
+                key=wkey,
             )
     return inputs
 
 
 def render_probability_indicator(prob, baseline_prob):
-    """Big probability number plus a zone-coloured horizontal bar."""
     if prob < 0.10:
         color = "#2ca02c"
     elif prob < 0.25:
@@ -123,10 +230,8 @@ def render_probability_indicator(prob, baseline_prob):
 
 
 def calc_economics(loan_amnt, installment, term, prob_default):
-    """Simple expected-value calculation. Industry-standard rough numbers."""
     expected_interest_if_paid = max(installment * term - loan_amnt, 0.0)
-    expected_loss_if_default = 0.5 * loan_amnt  # ~50% LGD is a rough industry default
-
+    expected_loss_if_default = 0.5 * loan_amnt
     expected_value = (
         (1 - prob_default) * expected_interest_if_paid
         - prob_default * expected_loss_if_default
@@ -141,16 +246,9 @@ def calc_economics(loan_amnt, installment, term, prob_default):
 
 
 def find_top_improvements(model, X, meta, base_prob, top_n=3):
-    """Brute-force search across each feature for the value that minimizes default prob.
-
-    Holds all other features constant, varies one at a time. Numerics use a
-    20-point grid across the feature's range; categoricals try every category.
-    Returns the top N reductions ranked by absolute drop in default probability.
-    """
     rows = []
     feature_for_row = []
     suggested_for_row = []
-
     current_row = X.iloc[0]
 
     for col in meta["features"]:
@@ -218,17 +316,18 @@ def main():
     model = load_model()
     meta = load_json("feature_meta.json")
     metrics = load_json("metrics.json")
-    sample = load_json("sample.json")
+
+    initialize_state(meta)
 
     st.title("Loan Default Predictor")
     st.write(
-        "LightGBM model trained on the Lending Club dataset. Move the sliders. "
-        "The default probability, the per-feature contribution chart, the loan's "
-        "expected-value math, and the top single-feature changes that would lower "
-        "risk all update live."
+        "LightGBM model trained on the Lending Club dataset. Try a preset "
+        "borrower in the sidebar, then move the sliders. The default probability, "
+        "the per-feature contribution chart, the loan economics, and the top "
+        "single-feature changes that would lower risk all update live."
     )
 
-    inputs = sidebar_inputs(meta, sample)
+    inputs = sidebar_inputs(meta)
 
     X = pd.DataFrame([inputs])
     for col in meta["categorical"]:
@@ -241,7 +340,6 @@ def main():
     bias = float(contribs[0, -1])
     baseline_prob = 1.0 / (1.0 + np.exp(-bias))
 
-    # ===== Decision header =====
     render_probability_indicator(prob, baseline_prob)
 
     if prob < 0.10:
@@ -253,12 +351,10 @@ def main():
 
     st.write("")
 
-    # ===== Loan economics + Per-feature contributions =====
     left, right = st.columns([1, 1])
 
     with left:
         st.subheader("Loan economics")
-
         loan_amnt = float(X.iloc[0]["loan_amnt"])
         installment = float(X.iloc[0]["installment"])
         term = float(X.iloc[0]["term"])
@@ -319,7 +415,6 @@ def main():
             "Sum + baseline = model output."
         )
 
-    # ===== Counterfactuals =====
     st.subheader("What single change would help most?")
     st.caption(
         "Brute-force search: for each feature, what value (holding the rest "
@@ -332,9 +427,7 @@ def main():
         cols = st.columns(3)
         for i, imp in enumerate(improvements):
             with cols[i]:
-                st.markdown(
-                    f"**{imp['feature'].replace('_', ' ').title()}**"
-                )
+                st.markdown(f"**{imp['feature'].replace('_', ' ').title()}**")
                 st.markdown(
                     f"`{format_value(imp['current'])}` → "
                     f"`{format_value(imp['suggested'])}`"
@@ -352,7 +445,6 @@ def main():
             "structurally elevated across all individual features."
         )
 
-    # ===== Diagnostics =====
     with st.expander("Model details and diagnostics"):
         c1, c2 = st.columns(2)
         with c1:
