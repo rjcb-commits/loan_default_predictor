@@ -1,6 +1,6 @@
 # Loan Default Predictor
 
-A LightGBM model that estimates default probability for Lending Club personal loans, served as an interactive Streamlit app.
+A LightGBM model that estimates default probability for Lending Club personal loans, served as an interactive Streamlit app. Portfolio demonstration using historical public data; not validated for lending decisions.
 
 **Live demo:** https://loandefaultpredictor-rayjackcb.streamlit.app
 
@@ -30,7 +30,7 @@ Download the Lending Club loan dataset from Kaggle and place `loan.csv` (or whic
 python train.py
 ```
 
-Reads from `data/loan.csv`, writes `model.pkl` and metadata into `artifacts/`. Takes about two minutes on a 10% stratified subsample.
+Reads from `data/loan.csv`, writes `model.pkl` and metadata into `artifacts/`. Runs on a 10% stratified subsample; observed runtime is a couple of minutes on a modern laptop.
 
 ## Run the app
 
@@ -52,7 +52,7 @@ Opens at http://localhost:8501.
 - LightGBM with 500 trees, early stopping on validation AUC
 - Categorical features handled natively by LightGBM, no manual encoding
 - 80/20 train/test split, stratified by default outcome
-- 10% stratified subsample of the full 2.2M-row dataset gets close to full-data AUC and trains in two minutes
+- 10% stratified subsample of the full 2.2M-row dataset keeps training fast; the deployed model reaches ~0.71 test AUC on 26,907 held-out loans
 
 ## Project layout
 
